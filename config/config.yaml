@@ -1,0 +1,84 @@
+# Image Captioning Model Configuration File
+# This file contains all hyperparameters and settings for training
+
+# Data Configuration
+data:
+  # Paths to training data
+  train_annotation_path: "data/raw/datasets/annotations_trainval2017/annotations/captions_train2017.json"
+  train_image_path: "data/raw/datasets/train2017/train2017"
+  
+  # Paths to validation data
+  val_annotation_path: "data/raw/datasets/annotations_trainval2017/annotations/captions_val2017.json"
+  val_image_path: "data/raw/datasets/val2017/val2017"
+  
+  # Image preprocessing settings
+  image_size: [620, 620]  # [height, width]
+  
+  # Caption settings
+  max_caption_length: 20  # Maximum length of captions
+  min_word_freq: 8  # Minimum frequency for a word to be in vocabulary
+  oov_token: "<OOV>"  # Out of vocabulary token
+
+# Model Architecture Configuration
+model:
+  # Embedding layer size
+  embed_size: 100
+  
+  # LSTM hidden size
+  hidden_size: 512
+  
+  # Number of LSTM layers
+  num_layers: 2
+  
+  # Dropout rate (0.0 to 1.0)
+  dropout: 0.3
+  
+  # Pretrained embeddings settings
+  use_pretrained_embeddings: true
+  glove_path: "data/raw/glove.6B.100d.txt"
+
+# Training Configuration
+training:
+  # Number of training epochs
+  num_epochs: 50
+  
+  # Batch size for training
+  batch_size: 32
+  
+  # Number of data loading workers
+  num_workers: 4
+  
+  # Optimizer settings
+  optimizer: "adam"  # Options: "adam", "sgd"
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  momentum: 0.9  # Only used for SGD
+  
+  # Gradient clipping (0 to disable)
+  grad_clip: 5.0
+  
+  # Learning rate scheduler
+  use_scheduler: true
+  scheduler_factor: 0.5  # Factor by which to reduce learning rate
+  scheduler_patience: 3  # Number of epochs with no improvement after which LR will be reduced
+  
+  # Device settings
+  use_cuda: true  # Use GPU if available
+  
+  # Random seed for reproducibility
+  seed: 42
+  
+  # Checkpoint settings
+  checkpoint_dir: "experiments/checkpoints"
+  save_every: 5  # Save checkpoint every N epochs
+  resume_checkpoint: false  # Whether to resume from a checkpoint
+  checkpoint_path: "experiments/checkpoints/checkpoint.pth"  # Path to checkpoint to resume from
+
+# Logging Configuration
+logging:
+  log_dir: "experiments/logs"
+  log_level: "INFO"
+  tensorboard: true
+  save_samples: true  # Save sample predictions during validation
+  sample_frequency: 10  # Save samples every N epochs
+
