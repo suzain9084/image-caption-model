@@ -1,6 +1,7 @@
 import numpy as np
 from collections import Counter
 import tensorflow as tf
+import torch
 
 class Vocabulary:
     def __init__(self, min_freq=8, oov_token="<OOV>", max_len=20):
@@ -36,7 +37,7 @@ class Vocabulary:
             texts = [texts]
         sequences = self.tokenizer.texts_to_sequences(texts)
         padded = tf.keras.utils.pad_sequences(sequences, maxlen=self.max_len, padding="post")
-        return padded
+        return torch.tensor(padded, dtype=torch.long)
 
     def sequence_to_text(self, seq):
         return " ".join([self.tokenizer.index_word.get(idx, self.oov_token) for idx in seq if idx != 0])

@@ -1,10 +1,12 @@
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import yaml
 import argparse
-import os
 from tqdm import tqdm
 import numpy as np
 from pathlib import Path
@@ -54,8 +56,8 @@ class ImageCaptioningModel(nn.Module):
         features = features.unsqueeze(1)
         
         embedded_captions = self.embed_layer(captions)
-        
-        outputs = self.decoder(features, embedded_captions[:, :-1, :])
+        embedded_captions = embedded_captions.squeeze(1)
+        outputs = self.decoder(features, embedded_captions)
         return outputs
 
 
@@ -73,7 +75,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
         outputs = model(images, captions)
         
         outputs = outputs.reshape(-1, outputs.shape[2])
-        targets = captions[:, 1:].reshape(-1)
+        targets = captions.reshape(-1)
         
         loss = criterion(outputs, targets)
         
@@ -104,7 +106,7 @@ def validate(model, dataloader, criterion, device):
             outputs = model(images, captions)
             
             outputs = outputs.reshape(-1, outputs.shape[2])
-            targets = captions[:, 1:].reshape(-1)
+            targets = captions.reshape(-1)
             
             loss = criterion(outputs, targets)
             total_loss += loss.item()
@@ -163,7 +165,7 @@ def main(config_path):
         batch_size=config['training']['batch_size'],
         shuffle=True,
         num_workers=config['training']['num_workers'],
-        pin_memory=True
+        pin_memory=False
     )
     
     val_loader = DataLoader(
@@ -171,17 +173,20 @@ def main(config_path):
         batch_size=config['training']['batch_size'],
         shuffle=False,
         num_workers=config['training']['num_workers'],
-        pin_memory=True
+        pin_memory=False
     )
     
     print("Initializing models...")
-    encoder = EncoderCNN()
+    encoder = EncoderCNN(
+        feature_dim=config['model']['feature_dim']
+    )
     decoder = DecoderRNN(
         embed_size=config['model']['embed_size'],
         hidden_size=config['model']['hidden_size'],
         vocab_size=vocab_size,
         num_layers=config['model']['num_layers'],
-        dropout=config['model']['dropout']
+        dropout=config['model']['dropout'],
+        feature_dim=config['model']['feature_dim']
     )
     
     model = ImageCaptioningModel(

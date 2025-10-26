@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 
 class EncoderCNN(nn.Module):
-    def __init__(self, embedding_dim=512):
+    def __init__(self, feature_dim=512):
         super().__init__()
         self.convSequence = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1),
@@ -29,7 +29,7 @@ class EncoderCNN(nn.Module):
             nn.Linear(512, 1024),
             nn.ReLU(),
 
-            nn.Linear(1024, embedding_dim),
+            nn.Linear(1024, feature_dim),
             nn.ReLU()
         )
 

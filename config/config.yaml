@@ -37,6 +37,9 @@ model:
   use_pretrained_embeddings: true
   glove_path: "data/raw/glove.6B.100d.txt"
 
+  # image embedding dim
+  feature_dim: 512
+
 # Training Configuration
 training:
   # Number of training epochs
