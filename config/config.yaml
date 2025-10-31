@@ -46,7 +46,7 @@ training:
   num_epochs: 50
   
   # Batch size for training
-  batch_size: 32
+  batch_size: 2
   
   # Number of data loading workers
   num_workers: 4
@@ -60,22 +60,16 @@ training:
   # Gradient clipping (0 to disable)
   grad_clip: 5.0
   
-  # Learning rate scheduler
-  use_scheduler: true
-  scheduler_factor: 0.5  # Factor by which to reduce learning rate
-  scheduler_patience: 3  # Number of epochs with no improvement after which LR will be reduced
-  
   # Device settings
   use_cuda: true  # Use GPU if available
   
   # Random seed for reproducibility
   seed: 42
+
+  experiment_name: "experiment_1"
   
   # Checkpoint settings
-  checkpoint_dir: "experiments/checkpoints"
-  save_every: 5  # Save checkpoint every N epochs
-  resume_checkpoint: false  # Whether to resume from a checkpoint
-  checkpoint_path: "experiments/checkpoints/checkpoint.pth"  # Path to checkpoint to resume from
+  checkpoint_dir: "experiments/experiment_1/checkpoint"
 
 # Logging Configuration
 logging:

@@ -17,3 +17,7 @@ Pillow>=9.5.0
 # Tokenization (using TensorFlow's Keras preprocessing)
 tensorflow>=2.12.0
 
+# Caption evaluation metrics
+nltk>=3.8.0
+rouge-score>=0.1.2
+

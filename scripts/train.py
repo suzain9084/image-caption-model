@@ -10,11 +10,19 @@ import argparse
 from tqdm import tqdm
 import numpy as np
 from pathlib import Path
+import re
+import json
+import shutil
+import matplotlib.pyplot as plt
 
 from data.processed.data_processed import CaptionDataset
 from models.decoder import DecoderRNN
 from models.encoder import EncoderCNN
 from utils.transform import ImageTransforms
+from utils.metrics import evaluate_caption_metrics
+from utils.helper_function import _compute_token_accuracy
+from models.captionGenerator import ImageCaptioningModel
+from utils.helper_function import plotAccuracyGraph
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -27,43 +35,11 @@ def save_checkpoint(state, checkpoint_dir, filename='checkpoint.pth'):
     torch.save(state, filepath)
     print(f"Checkpoint saved to {filepath}")
 
-def load_checkpoint(checkpoint_path, encoder, decoder, optimizer=None):
-    checkpoint = torch.load(checkpoint_path)
-    encoder.load_state_dict(checkpoint['encoder_state_dict'])
-    decoder.load_state_dict(checkpoint['decoder_state_dict'])
-    if optimizer is not None:
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    return checkpoint['epoch'], checkpoint['train_loss']
-
-class ImageCaptioningModel(nn.Module):
-    """Combined Encoder-Decoder model"""
-    def __init__(self, encoder, decoder, embed_size, pretrained_embeddings=None):
-        super(ImageCaptioningModel, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        
-        # Create embedding layer
-        vocab_size = decoder.linear.out_features
-        self.embed_layer = nn.Embedding(vocab_size, embed_size)
-        
-        # Load pretrained embeddings if provided
-        if pretrained_embeddings is not None:
-            self.embed_layer.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
-            print(f"Loaded pretrained embeddings: {pretrained_embeddings.shape}")
-        
-    def forward(self, images, captions):
-        features = self.encoder(images)
-        features = features.unsqueeze(1)
-        
-        embedded_captions = self.embed_layer(captions)
-        embedded_captions = embedded_captions.squeeze(1)
-        outputs = self.decoder(features, embedded_captions)
-        return outputs
-
-
 def train_epoch(model, dataloader, criterion, optimizer, device, config):
     model.train()
     total_loss = 0
+    total_correct = 0
+    total_valid = 0
     
     progress_bar = tqdm(dataloader, desc="Training")
     for batch_idx, (images, captions) in enumerate(progress_bar):
@@ -87,15 +63,24 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
         optimizer.step()
         
         total_loss += loss.item()
+        with torch.no_grad():
+            batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
+            # accumulate per-batch using valid tokens
+            valid_mask = targets != 0
+            total_correct += batch_acc * valid_mask.sum().item()
+            total_valid += valid_mask.sum().item()
         
-        progress_bar.set_postfix({'loss': loss.item()})
+        progress_bar.set_postfix({'loss': loss.item(), 'acc': batch_acc})
         
-    return total_loss / len(dataloader)
+    epoch_acc = (total_correct / max(total_valid, 1)) if total_valid > 0 else 0.0
+    return total_loss / len(dataloader), epoch_acc
 
 
 def validate(model, dataloader, criterion, device):
     model.eval()
     total_loss = 0
+    total_correct = 0
+    total_valid = 0
     
     with torch.no_grad():
         progress_bar = tqdm(dataloader, desc="Validation")
@@ -110,10 +95,15 @@ def validate(model, dataloader, criterion, device):
             
             loss = criterion(outputs, targets)
             total_loss += loss.item()
+            batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
+            valid_mask = targets != 0
+            total_correct += batch_acc * valid_mask.sum().item()
+            total_valid += valid_mask.sum().item()
             
-            progress_bar.set_postfix({'loss': loss.item()})
+            progress_bar.set_postfix({'loss': loss.item(), 'acc': batch_acc})
     
-    return total_loss / len(dataloader)
+    epoch_acc = (total_correct / max(total_valid, 1)) if total_valid > 0 else 0.0
+    return total_loss / len(dataloader), epoch_acc
 
 
 def main(config_path):
@@ -205,64 +195,39 @@ def main(config_path):
             lr=config['training']['learning_rate'],
             weight_decay=config['training']['weight_decay']
         )
-    elif config['training']['optimizer'] == 'sgd':
-        optimizer = optim.SGD(
-            model.parameters(),
-            lr=config['training']['learning_rate'],
-            momentum=config['training'].get('momentum', 0.9),
-            weight_decay=config['training']['weight_decay']
-        )
     else:
         raise ValueError(f"Unsupported optimizer: {config['training']['optimizer']}")
-    
-    if config['training']['use_scheduler']:
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            factor=config['training']['scheduler_factor'],
-            patience=config['training']['scheduler_patience']
-        )
     
     start_epoch = 0
     best_val_loss = float('inf')
     
-    if config['training']['resume_checkpoint']:
-        checkpoint_path = config['training']['checkpoint_path']
-        if os.path.exists(checkpoint_path):
-            print(f"Loading checkpoint from {checkpoint_path}")
-            start_epoch, train_loss = load_checkpoint(checkpoint_path, encoder, decoder, optimizer)
-            print(f"Resumed from epoch {start_epoch}")
-        else:
-            print(f"Checkpoint not found at {checkpoint_path}, starting from scratch")
-    
+    # Prepare experiment directory: experiments/experiment_i
+    experiment_dir = "experiments" / f'experiment_{config['training']['experiment_name']}'
+    plots_dir = experiment_dir / 'plots'
+    logs_dir = experiment_dir / 'logs'
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
     print(f"\nStarting training for {config['training']['num_epochs']} epochs...")
+
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+    caption_metrics_history = []  # Store caption metrics for each epoch
     for epoch in range(start_epoch, config['training']['num_epochs']):
         print(f"\nEpoch [{epoch+1}/{config['training']['num_epochs']}]")
         
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, device, config)
-        print(f"Training Loss: {train_loss:.4f}")
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, config)
+        print(f"Training Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
         
-        val_loss = validate(model, val_loader, criterion, device)
-        print(f"Validation Loss: {val_loss:.4f}")
-        
-        if config['training']['use_scheduler']:
-            scheduler.step(val_loss)
-        
-        if (epoch + 1) % config['training']['save_every'] == 0:
-            checkpoint = {
-                'epoch': epoch + 1,
-                'encoder_state_dict': encoder.state_dict(),
-                'decoder_state_dict': decoder.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'train_loss': train_loss,
-                'val_loss': val_loss,
-                'config': config
-            }
-            save_checkpoint(
-                checkpoint,
-                config['training']['checkpoint_dir'],
-                f'checkpoint_epoch_{epoch+1}.pth'
-            )
+        val_loss, val_acc = validate(model, val_loader, criterion, device)
+        print(f"Validation Loss: {val_loss:.4f} | Acc: {val_acc:.4f}")
+
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accuracies.append(train_acc)
+        val_accuracies.append(val_acc)
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -273,6 +238,8 @@ def main(config_path):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_loss': train_loss,
                 'val_loss': val_loss,
+                'train_acc': train_acc,
+                'val_acc': val_acc,
                 'config': config
             }
             save_checkpoint(
@@ -282,7 +249,44 @@ def main(config_path):
             )
             print(f"Best model saved with validation loss: {best_val_loss:.4f}")
     
-    print("\nTraining completed!")
+    # Final full evaluation on best model
+    print("\n" + "="*50)
+    print("Computing final caption metrics on full validation set...")
+    print("="*50)
+    try:
+        # Reload best model if needed (it's already loaded)
+        final_caption_metrics = evaluate_caption_metrics(
+            model, encoder, decoder, val_loader, val_dataset.vocabulary,
+            device, max_samples=None, max_len=config['data']['max_caption_length']
+        )
+        print(f"\nFinal Caption Metrics:")
+        print(f"  BLEU-1: {final_caption_metrics['bleu1']:.4f}")
+        print(f"  BLEU-4: {final_caption_metrics['bleu4']:.4f}")
+        print(f"  METEOR: {final_caption_metrics['meteor']:.4f}")
+        print(f"  ROUGE-L: {final_caption_metrics['rouge_l']:.4f}")
+        print(f"  CIDEr: {final_caption_metrics['cider']:.4f}")
+        print(f"  SPICE: {final_caption_metrics['spice']:.4f}")
+    except Exception as e:
+        print(f"Error computing final caption metrics: {e}")
+        final_caption_metrics = {}
+
+    # Save metrics to JSON
+    metrics = {
+        'train_loss': train_losses,
+        'val_loss': val_losses,
+        'train_acc': train_accuracies,
+        'val_acc': val_accuracies,
+        'caption_metrics_history': caption_metrics_history,
+        'final_caption_metrics': final_caption_metrics,
+        'epochs': list(range(start_epoch + 1, start_epoch + 1 + len(train_losses)))
+    }
+    with open(experiment_dir / 'metrics.json', 'w') as f:
+        json.dump(metrics, f, indent=2)
+
+    # Plot and save curves
+    plotAccuracyGraph(metrics,train_losses, val_losses, plots_dir, train_accuracies, val_accuracies)
+
+    print(f"\nTraining completed! Experiment saved to: {experiment_dir}")
 
 
 if __name__ == '__main__':
