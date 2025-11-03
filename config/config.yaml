@@ -43,13 +43,13 @@ model:
 # Training Configuration
 training:
   # Number of training epochs
-  num_epochs: 50
+  num_epochs: 10
   
   # Batch size for training
   batch_size: 32
   
   # Number of data loading workers
-  num_workers: 4
+  num_workers: 1
   
   # Optimizer settings
   optimizer: "adam"  # Options: "adam", "sgd"
@@ -66,7 +66,7 @@ training:
   # Random seed for reproducibility
   seed: 42
 
-  experiment_name: "experiment_1"
+  experiment_name: "1"
   
   # Checkpoint settings
   checkpoint_dir: "experiments/experiment_1/checkpoint"

@@ -10,19 +10,19 @@ import argparse
 from tqdm import tqdm
 import numpy as np
 from pathlib import Path
-import re
-import json
-import shutil
-import matplotlib.pyplot as plt
+# import re
+# import json
+# import shutil
+# import matplotlib.pyplot as plt
 
 from data.processed.data_processed import CaptionDataset
 from models.decoder import DecoderRNN
 from models.encoder import EncoderCNN
 from utils.transform import ImageTransforms
-from utils.metrics import evaluate_caption_metrics
+# from utils.metrics import evaluate_caption_metrics
 from utils.helper_function import _compute_token_accuracy
 from models.captionGenerator import ImageCaptioningModel
-from utils.helper_function import plotAccuracyGraph
+# from utils.helper_function import plotAccuracyGraph
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
@@ -206,6 +206,7 @@ def main(config_path):
     experiment_dir.mkdir(parents=True, exist_ok=True)
     plots_dir = experiment_dir / "plots"
     logs_dir = experiment_dir / "logs"
+
     plots_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -230,62 +231,60 @@ def main(config_path):
         train_accuracies.append(train_acc)
         val_accuracies.append(val_acc)
         
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            checkpoint = {
-                'epoch': epoch + 1,
-                'encoder_state_dict': encoder.state_dict(),
-                'decoder_state_dict': decoder.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'train_loss': train_loss,
-                'val_loss': val_loss,
-                'train_acc': train_acc,
-                'val_acc': val_acc,
-                'config': config
-            }
-            save_checkpoint(
-                checkpoint,
-                config['training']['checkpoint_dir'],
-                'best_model.pth'
-            )
-            print(f"Best model saved with validation loss: {best_val_loss:.4f}")
+        checkpoint = {
+            'epoch': epoch + 1,
+            'encoder_state_dict': encoder.state_dict(),
+            'decoder_state_dict': decoder.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'train_acc': train_acc,
+            'val_acc': val_acc,
+            'config': config
+        }
+        save_checkpoint(
+            checkpoint,
+            config['training']['checkpoint_dir'],
+            'best_model.pth'
+        )
+        print(f"Best model saved with validation loss: {best_val_loss:.4f}")
     
     # Final full evaluation on best model
-    print("\n" + "="*50)
-    print("Computing final caption metrics on full validation set...")
-    print("="*50)
-    try:
-        # Reload best model if needed (it's already loaded)
-        final_caption_metrics = evaluate_caption_metrics(
-            model, encoder, decoder, val_loader, val_dataset.vocabulary,
-            device, max_samples=None, max_len=config['data']['max_caption_length']
-        )
-        print(f"\nFinal Caption Metrics:")
-        print(f"  BLEU-1: {final_caption_metrics['bleu1']:.4f}")
-        print(f"  BLEU-4: {final_caption_metrics['bleu4']:.4f}")
-        print(f"  METEOR: {final_caption_metrics['meteor']:.4f}")
-        print(f"  ROUGE-L: {final_caption_metrics['rouge_l']:.4f}")
-        print(f"  CIDEr: {final_caption_metrics['cider']:.4f}")
-        print(f"  SPICE: {final_caption_metrics['spice']:.4f}")
-    except Exception as e:
-        print(f"Error computing final caption metrics: {e}")
-        final_caption_metrics = {}
+    # print("\n" + "="*50)
+    # print("Computing final caption metrics on full validation set...")
+    # print("="*50)
+    # try:
+    #     # Reload best model if needed (it's already loaded)
+    #     final_caption_metrics = evaluate_caption_metrics(
+    #         model, encoder, decoder, val_loader, val_dataset.vocabulary,
+    #         device, max_samples=None, max_len=config['data']['max_caption_length']
+    #     )
+    #     print(f"\nFinal Caption Metrics:")
+    #     print(f"  BLEU-1: {final_caption_metrics['bleu1']:.4f}")
+    #     print(f"  BLEU-4: {final_caption_metrics['bleu4']:.4f}")
+    #     print(f"  METEOR: {final_caption_metrics['meteor']:.4f}")
+    #     print(f"  ROUGE-L: {final_caption_metrics['rouge_l']:.4f}")
+    #     print(f"  CIDEr: {final_caption_metrics['cider']:.4f}")
+    #     print(f"  SPICE: {final_caption_metrics['spice']:.4f}")
+    # except Exception as e:
+    #     print(f"Error computing final caption metrics: {e}")
+    #     final_caption_metrics = {}
 
-    # Save metrics to JSON
-    metrics = {
-        'train_loss': train_losses,
-        'val_loss': val_losses,
-        'train_acc': train_accuracies,
-        'val_acc': val_accuracies,
-        'caption_metrics_history': caption_metrics_history,
-        'final_caption_metrics': final_caption_metrics,
-        'epochs': list(range(start_epoch + 1, start_epoch + 1 + len(train_losses)))
-    }
-    with open(experiment_dir / 'metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=2)
+    # # Save metrics to JSON
+    # metrics = {
+    #     'train_loss': train_losses,
+    #     'val_loss': val_losses,
+    #     'train_acc': train_accuracies,
+    #     'val_acc': val_accuracies,
+    #     'caption_metrics_history': caption_metrics_history,
+    #     'final_caption_metrics': final_caption_metrics,
+    #     'epochs': list(range(start_epoch + 1, start_epoch + 1 + len(train_losses)))
+    # }
+    # with open(experiment_dir / 'metrics.json', 'w') as f:
+    #     json.dump(metrics, f, indent=2)
 
     # Plot and save curves
-    plotAccuracyGraph(metrics,train_losses, val_losses, plots_dir, train_accuracies, val_accuracies)
+    # plotAccuracyGraph(metrics,train_losses, val_losses, plots_dir, train_accuracies, val_accuracies)
 
     print(f"\nTraining completed! Experiment saved to: {experiment_dir}")
 
