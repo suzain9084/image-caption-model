@@ -46,7 +46,7 @@ training:
   num_epochs: 50
   
   # Batch size for training
-  batch_size: 2
+  batch_size: 32
   
   # Number of data loading workers
   num_workers: 4

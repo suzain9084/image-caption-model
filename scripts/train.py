@@ -202,9 +202,10 @@ def main(config_path):
     best_val_loss = float('inf')
     
     # Prepare experiment directory: experiments/experiment_i
-    experiment_dir = "experiments" / f'experiment_{config['training']['experiment_name']}'
-    plots_dir = experiment_dir / 'plots'
-    logs_dir = experiment_dir / 'logs'
+    experiment_dir = Path("experiments") / f"experiment_{config['training']['experiment_name']}"
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    plots_dir = experiment_dir / "plots"
+    logs_dir = experiment_dir / "logs"
     plots_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
