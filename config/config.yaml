@@ -66,10 +66,10 @@ training:
   # Random seed for reproducibility
   seed: 42
 
-  experiment_name: "1"
+  experiment_name: "2"
   
   # Checkpoint settings
-  checkpoint_dir: "experiments/experiment_1/checkpoint"
+  checkpoint_dir: "experiments/experiment_2/checkpoint"
 
 # Logging Configuration
 logging:

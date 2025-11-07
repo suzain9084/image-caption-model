@@ -23,19 +23,14 @@ class EncoderCNN(nn.Module):
             nn.MaxPool2d(kernel_size=2),
         )
 
-        self.global_pool = nn.AdaptiveAvgPool2d((1,1))
-
-        self.linearSequence = nn.Sequential(
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-
-            nn.Linear(1024, feature_dim),
-            nn.ReLU()
-        )
+        self.feature_projection = nn.Linear(512, feature_dim)
 
     def forward(self, x):
         x = self.convSequence(x)
-        x = self.global_pool(x)
-        x = x.view(x.size(0), -1)
-        x = self.linearSequence(x)
+        
+        batch_size, channels, height, width = x.size()
+        x = x.view(batch_size, channels, height * width)
+        x = x.transpose(1, 2)
+        x = self.feature_projection(x)
+        
         return x
