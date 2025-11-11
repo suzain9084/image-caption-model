@@ -19,7 +19,7 @@ class CaptionDataset(Dataset):
         self.imgId2fileName = {img['id']: img['file_name'] for img in self.annotation['images']}
 
     def __len__(self):
-        return  min(1000, len(self.annotation['annotations']))
+        return  min(2, len(self.annotation['annotations']))
 
     def __getitem__(self, index):
         ann = self.annotation['annotations'][index]

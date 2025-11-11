@@ -14,6 +14,7 @@ class ImageCaptioningModel(nn.Module):
         if pretrained_embeddings is not None:
             self.embed_layer.weight.data.copy_(torch.from_numpy(pretrained_embeddings))
             print(f"Loaded pretrained embeddings: {pretrained_embeddings.shape}")
+            self.embed_layer.weight.requires_grad = False
         
     def forward(self, images, captions):
         features = self.encoder(images)

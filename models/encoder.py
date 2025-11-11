@@ -31,6 +31,8 @@ class EncoderCNN(nn.Module):
         batch_size, channels, height, width = x.size()
         x = x.view(batch_size, channels, height * width)
         x = x.transpose(1, 2)
+        drop_out = nn.Dropout(0.3)
+        x = drop_out(x)
         x = self.feature_projection(x)
         
         return x
