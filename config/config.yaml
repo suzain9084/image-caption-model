@@ -52,7 +52,7 @@ training:
   num_workers: 1
   
   # Optimizer settings
-  optimizer: "adam"  # Options: "adam", "sgd"
+  optimizer: "adamW"  # Options: "adam", "sgd"
   learning_rate: 0.0001
   weight_decay: 0.0001
   momentum: 0.9  # Only used for SGD

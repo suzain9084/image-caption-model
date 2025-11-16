@@ -48,11 +48,12 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
         optimizer.zero_grad()
         
         outputs = model(images, captions)
-        outputs = outputs.reshape(-1, outputs.shape[2])
-        targets = captions.reshape(-1)[1:]
-        
+        outputs = outputs.reshape(-1, outputs.shape[2]) 
+        captions = captions[:, :, 1:]
+
+        targets = captions.reshape(-1)
+
         loss = criterion(outputs, targets)
-        
         loss.backward()
         
         if config['training']['grad_clip'] > 0:
@@ -85,11 +86,11 @@ def validate(model, dataloader, criterion, device):
         for images, captions in progress_bar:
             images = images.to(device)
             captions = captions.to(device)
-            
+
             outputs = model(images, captions)
-            
-            outputs = outputs.reshape(-1, outputs.shape[2])
-            targets = captions.reshape(-1)[1:]
+            outputs = outputs.reshape(-1, outputs.shape[2]) 
+            captions = captions[:, :, 1:]
+            targets = captions.reshape(-1)
             
             loss = criterion(outputs, targets)
             total_loss += loss.item()
@@ -185,10 +186,10 @@ def main(config_path):
     )
     model = model.to(device)
     
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    criterion = nn.CrossEntropyLoss(ignore_index=0, label_smoothing=0.1)
     
-    if config['training']['optimizer'] == 'adam':
-        optimizer = optim.Adam(
+    if config['training']['optimizer'] == 'adamW':
+        optimizer = optim.AdamW(
             model.parameters(),
             lr=config['training']['learning_rate'],
             weight_decay=config['training']['weight_decay']
