@@ -24,6 +24,8 @@ class CaptionDataset(Dataset):
     def __getitem__(self, index):
         ann = self.annotation['annotations'][index]
         caption = ann['caption']
+        caption = "<SOS>" + caption + "<EOS>"
+
         padded_sequence = self.vocabulary.texts_to_padded_sequences(caption)
 
         img_path = join(self.image_path, self.imgId2fileName[ann['image_id']])

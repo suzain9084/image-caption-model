@@ -40,7 +40,7 @@ class DecoderRNN(nn.Module):
         outputs = []
         hidden = (h0, c0)
         
-        for t in range(seq_len):
+        for t in range(seq_len - 1):
             word_embed = captions[:, t, :]
             
             h_t = hidden[0][-1]

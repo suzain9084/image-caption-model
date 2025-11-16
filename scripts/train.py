@@ -45,13 +45,11 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
     for batch_idx, (images, captions) in enumerate(progress_bar):
         images = images.to(device)
         captions = captions.to(device)
-        
         optimizer.zero_grad()
         
         outputs = model(images, captions)
-        
         outputs = outputs.reshape(-1, outputs.shape[2])
-        targets = captions.reshape(-1)
+        targets = captions.reshape(-1)[1:]
         
         loss = criterion(outputs, targets)
         
@@ -91,7 +89,7 @@ def validate(model, dataloader, criterion, device):
             outputs = model(images, captions)
             
             outputs = outputs.reshape(-1, outputs.shape[2])
-            targets = captions.reshape(-1)
+            targets = captions.reshape(-1)[1:]
             
             loss = criterion(outputs, targets)
             total_loss += loss.item()

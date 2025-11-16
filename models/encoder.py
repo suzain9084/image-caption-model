@@ -34,4 +34,5 @@ class EncoderCNN(nn.Module):
         batch_size, channels, height, width = x.size()
         x = x.view(batch_size, channels, height * width)
         x = x.transpose(1, 2)
+        x = self.feature_projection(x)
         return x

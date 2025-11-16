@@ -12,11 +12,11 @@ data:
   val_image_path: "data/raw/datasets/val2017/val2017"
   
   # Image preprocessing settings
-  image_size: [620, 620]  # [height, width]
+  image_size: [256, 256]  # [height, width]
   
   # Caption settings
-  max_caption_length: 20  # Maximum length of captions
-  min_word_freq: 8  # Minimum frequency for a word to be in vocabulary
+  max_caption_length: 22  # Maximum length of captions
+  min_word_freq: 5  # Minimum frequency for a word to be in vocabulary
   oov_token: "<OOV>"  # Out of vocabulary token
 
 # Model Architecture Configuration
