@@ -78,22 +78,32 @@ def generate_caption_greedy(model, encoder, decoder, image, vocabulary, max_len=
             h0 = decoder.init_h(features.squeeze(1)).unsqueeze(0).repeat(decoder.num_layers, 1, 1)
             c0 = decoder.init_c(features.squeeze(1)).unsqueeze(0).repeat(decoder.num_layers, 1, 1)
             
-            lstm_out, _ = decoder.lstm(embedded.unsqueeze(1), (h0, c0))
+            lstm_out, _ = decoder.lstm(captions, (h0, c0))
             output = decoder.linear(decoder.dropout(lstm_out[:, -1, :]))
             
             predicted_idx = output.argmax(1).item()
+            print(f"Predicted index: {predicted_idx}")
             # predicted_idx is 0-based but vocabulary is 1-based
             if predicted_idx > 0 and predicted_idx in idx_to_word_with_pad:
                 word = idx_to_word_with_pad[predicted_idx]
             else:
                 word = vocabulary.oov_token
             
+            # Stop if EOS predicted, but ensure we don't return completely empty captions
             if word == "<EOS>" or predicted_idx == eos_idx:
-                break
+                if caption_words:
+                    break
+                else:
+                    # If EOS is the very first prediction, skip it and continue
+                    continue
             
             caption_words.append(word)
             current_idx = predicted_idx
         
+        # If nothing was generated (e.g., model keeps predicting EOS), fall back to OOV
+        if not caption_words:
+            caption_words = [vocabulary.oov_token]
+
         caption = " ".join(caption_words)
         return caption
 
@@ -250,6 +260,11 @@ def evaluate_caption_metrics(model, encoder, decoder, dataloader, vocabulary, de
             for batch_idx in range(images.shape[0]):
                 image = images[batch_idx]
                 caption_tokens = captions[batch_idx]
+                if isinstance(caption_tokens, torch.Tensor):
+                    caption_tokens = caption_tokens.view(-1)
+                else:
+                    # handle list-based batches (e.g., from custom collate)
+                    caption_tokens = torch.tensor(caption_tokens, dtype=torch.long).view(-1)
                 
                 # Generate prediction
                 try:
@@ -290,6 +305,18 @@ def evaluate_caption_metrics(model, encoder, decoder, dataloader, vocabulary, de
             if (idx + 1) % 50 == 0:
                 print(f"  Processed {idx + 1} batches...")
     
+    # If no samples were evaluated, return zeros and warn
+    if not any([all_bleu1, all_bleu4, all_meteor, all_rouge_l, all_cider, all_spice]):
+        print("Warning: no captions were evaluated; returning 0 for all metrics.")
+        return {
+            'bleu1': 0.0,
+            'bleu4': 0.0,
+            'meteor': 0.0,
+            'rouge_l': 0.0,
+            'cider': 0.0,
+            'spice': 0.0,
+        }
+
     # Compute averages
     avg_scores = {
         'bleu1': float(np.mean(all_bleu1)) if all_bleu1 else 0.0,
