@@ -18,6 +18,7 @@ from pathlib import Path
 from data.processed.data_processed import CaptionDataset
 from models.decoder import DecoderRNN
 from models.encoder import EncoderCNN
+from models.pretrained_decoder import GPT2PrefixDecoder
 from utils.transform import ImageTransforms
 # from utils.metrics import evaluate_caption_metrics
 from utils.helper_function import _compute_token_accuracy
@@ -35,25 +36,48 @@ def save_checkpoint(state, checkpoint_dir, filename='checkpoint.pth'):
     torch.save(state, filepath)
     print(f"Checkpoint saved to {filepath}")
 
-def train_epoch(model, dataloader, criterion, optimizer, device, config):
+def train_epoch(model, dataloader, criterion, optimizer, device, config, decoder_type):
     model.train()
     total_loss = 0
     total_correct = 0
     total_valid = 0
     
     progress_bar = tqdm(dataloader, desc="Training")
-    for batch_idx, (images, captions) in enumerate(progress_bar):
-        images = images.to(device)
-        captions = captions.to(device)
+    for batch_idx, batch in enumerate(progress_bar):
+        if decoder_type == 'gpt2_prefix':
+            images, input_ids, attention_mask, labels = batch
+            images = images.to(device)
+            input_ids = input_ids.to(device)
+            attention_mask = attention_mask.to(device)
+            labels = labels.to(device)
+        else:
+            images, captions = batch
+            images = images.to(device)
+            captions = captions.to(device)
         optimizer.zero_grad()
         
-        outputs = model(images, captions)
-        outputs = outputs.reshape(-1, outputs.shape[2]) 
-        captions = captions[:, :, 1:]
-
-        targets = captions.reshape(-1)
-
-        loss = criterion(outputs, targets)
+        if decoder_type == 'gpt2_prefix':
+            decoder_outputs = model(
+                images,
+                input_ids,
+                attention_mask=attention_mask,
+                labels=labels,
+            )
+            loss = decoder_outputs['loss']
+            logits = decoder_outputs['logits'][:, -input_ids.size(1):, :]
+            logits_flat = logits.reshape(-1, logits.size(-1))
+            targets = labels.reshape(-1)
+            batch_acc = _compute_token_accuracy(
+                logits_flat, targets, ignore_index=-100
+            )
+        else:
+            outputs = model(images, captions)
+            outputs = outputs.reshape(-1, outputs.shape[2]) 
+            captions = captions[:, :, 1:]
+            targets = captions.reshape(-1)
+            loss = criterion(outputs, targets)
+            batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
+        
         loss.backward()
         
         if config['training']['grad_clip'] > 0:
@@ -63,9 +87,10 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
         
         total_loss += loss.item()
         with torch.no_grad():
-            batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
-            # accumulate per-batch using valid tokens
-            valid_mask = targets != 0
+            if decoder_type == 'gpt2_prefix':
+                valid_mask = targets != -100
+            else:
+                valid_mask = targets != 0
             total_correct += batch_acc * valid_mask.sum().item()
             total_valid += valid_mask.sum().item()
         
@@ -75,7 +100,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device, config):
     return total_loss / len(dataloader), epoch_acc
 
 
-def validate(model, dataloader, criterion, device):
+def validate(model, dataloader, criterion, device, decoder_type):
     model.eval()
     total_loss = 0
     total_correct = 0
@@ -83,19 +108,42 @@ def validate(model, dataloader, criterion, device):
     
     with torch.no_grad():
         progress_bar = tqdm(dataloader, desc="Validation")
-        for images, captions in progress_bar:
-            images = images.to(device)
-            captions = captions.to(device)
+        for batch in progress_bar:
+            if decoder_type == 'gpt2_prefix':
+                images, input_ids, attention_mask, labels = batch
+                images = images.to(device)
+                input_ids = input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+                labels = labels.to(device)
+                decoder_outputs = model(
+                    images,
+                    input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels,
+                )
+                loss = decoder_outputs['loss']
+                logits = decoder_outputs['logits'][:, -input_ids.size(1):, :]
+                logits_flat = logits.reshape(-1, logits.size(-1))
+                targets = labels.reshape(-1)
+                batch_acc = _compute_token_accuracy(
+                    logits_flat, targets, ignore_index=-100
+                )
+                valid_mask = targets != -100
+            else:
+                images, captions = batch
+                images = images.to(device)
+                captions = captions.to(device)
 
-            outputs = model(images, captions)
-            outputs = outputs.reshape(-1, outputs.shape[2]) 
-            captions = captions[:, :, 1:]
-            targets = captions.reshape(-1)
-            
-            loss = criterion(outputs, targets)
+                outputs = model(images, captions)
+                outputs = outputs.reshape(-1, outputs.shape[2]) 
+                captions = captions[:, :, 1:]
+                targets = captions.reshape(-1)
+                
+                loss = criterion(outputs, targets)
+                batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
+                valid_mask = targets != 0
+
             total_loss += loss.item()
-            batch_acc = _compute_token_accuracy(outputs, targets, ignore_index=0)
-            valid_mask = targets != 0
             total_correct += batch_acc * valid_mask.sum().item()
             total_valid += valid_mask.sum().item()
             
@@ -121,26 +169,40 @@ def main(config_path):
     val_transform = image_transforms.get_val_transforms()
     
     print("Loading datasets...")
+    data_cfg = config['data']
     train_dataset = CaptionDataset(
-        annotation_path=config['data']['train_annotation_path'],
-        image_path=config['data']['train_image_path'],
+        annotation_path=data_cfg['train_annotation_path'],
+        image_path=data_cfg['train_image_path'],
         transform=train_transform,
-        max_len=config['data']['max_caption_length']
+        max_len=data_cfg['max_caption_length'],
+        min_word_freq=data_cfg.get('min_word_freq', 5),
+        sample_limit=data_cfg.get('sample_limit'),
+        use_hf_tokenizer=data_cfg.get('use_hf_tokenizer', False),
+        hf_tokenizer_name=data_cfg.get('hf_tokenizer_name', 'gpt2'),
     )
     
     val_dataset = CaptionDataset(
-        annotation_path=config['data']['val_annotation_path'],
-        image_path=config['data']['val_image_path'],
+        annotation_path=data_cfg['val_annotation_path'],
+        image_path=data_cfg['val_image_path'],
         transform=val_transform,
-        max_len=config['data']['max_caption_length']
+        max_len=data_cfg['max_caption_length'],
+        min_word_freq=data_cfg.get('min_word_freq', 5),
+        sample_limit=data_cfg.get('sample_limit'),
+        use_hf_tokenizer=data_cfg.get('use_hf_tokenizer', False),
+        hf_tokenizer_name=data_cfg.get('hf_tokenizer_name', 'gpt2'),
     )
     
-    vocab_size = train_dataset.vocabulary.vocab_size()
-    print(f"Vocabulary size: {vocab_size}")
+    use_hf_decoder = data_cfg.get('use_hf_tokenizer', False)
+    if use_hf_decoder:
+        vocab_size = train_dataset.hf_tokenizer.vocab_size
+        print(f"Using HF tokenizer: {train_dataset.hf_tokenizer.name_or_path}")
+    else:
+        vocab_size = train_dataset.vocabulary.vocab_size()
+        print(f"Vocabulary size: {vocab_size}")
     
-    # Load pretrained embeddings if specified
+    # Load pretrained embeddings only for the custom attention decoder
     pretrained_embeddings = None
-    if config['model'].get('use_pretrained_embeddings', False):
+    if not use_hf_decoder and config['model'].get('use_pretrained_embeddings', False):
         glove_path = config['model']['glove_path']
         embedding_dim = config['model']['embed_size']
         print(f"Loading GloVe embeddings from {glove_path}...")
@@ -166,32 +228,64 @@ def main(config_path):
     )
     
     print("Initializing models...")
+    decoder_type = config['model'].get('decoder_type', 'attention')
     encoder = EncoderCNN(
-        feature_dim=config['model']['feature_dim']
+        feature_dim=config['model']['feature_dim'],
+        encoder_name=config['model'].get('encoder_name', 'efficientnet_b0'),
+        pretrained=config['model'].get('encoder_pretrained', True),
+        trainable_blocks=config['model'].get('encoder_trainable_blocks', 1),
     )
-    decoder = DecoderRNN(
-        embed_size=config['model']['embed_size'],
-        hidden_size=config['model']['hidden_size'],
-        vocab_size=vocab_size,
-        num_layers=config['model']['num_layers'],
-        dropout=config['model']['dropout'],
-        feature_dim=config['model']['feature_dim']
-    )
+    if decoder_type == 'gpt2_prefix':
+        decoder = GPT2PrefixDecoder(
+            feature_dim=config['model']['feature_dim'],
+            decoder_model_name=config['model'].get('hf_decoder_name', 'gpt2'),
+            prefix_length=config['model'].get('decoder_prefix_length', 16),
+            freeze_decoder_layers=config['model'].get('decoder_freeze_layers', 0),
+        )
+    else:
+        decoder = DecoderRNN(
+            embed_size=config['model']['embed_size'],
+            hidden_size=config['model']['hidden_size'],
+            vocab_size=vocab_size,
+            num_layers=config['model']['num_layers'],
+            dropout=config['model']['dropout'],
+            feature_dim=config['model']['feature_dim']
+        )
     
     model = ImageCaptioningModel(
         encoder, 
         decoder, 
         config['model']['embed_size'],
-        pretrained_embeddings=pretrained_embeddings
+        pretrained_embeddings=pretrained_embeddings,
+        decoder_type=decoder_type,
+        vocab_size=vocab_size
     )
     model = model.to(device)
     
-    criterion = nn.CrossEntropyLoss(ignore_index=0, label_smoothing=0.1)
+    criterion = None
+    if decoder_type != 'gpt2_prefix':
+        criterion = nn.CrossEntropyLoss(ignore_index=0, label_smoothing=0.1)
+    
+    decoder_lr = config['training']['learning_rate']
+    encoder_lr = config['training'].get('encoder_learning_rate', decoder_lr * 0.1)
+    
+    # Separate learning rates: decoder (and embeddings) use baseline LR,
+    # while the small set of unfrozen encoder blocks fine-tune with a
+    # smaller LR to avoid destroying pretrained weights.
+    decoder_params = [p for p in decoder.parameters() if p.requires_grad]
+    if model.embed_layer is not None:
+        decoder_params += list(model.embed_layer.parameters())
+    encoder_params = list(encoder.trainable_parameters())
+    
+    optimizer_groups = [
+        {'params': decoder_params, 'lr': decoder_lr},
+    ]
+    if encoder_params:
+        optimizer_groups.append({'params': encoder_params, 'lr': encoder_lr})
     
     if config['training']['optimizer'] == 'adamW':
         optimizer = optim.AdamW(
-            model.parameters(),
-            lr=config['training']['learning_rate'],
+            optimizer_groups,
             weight_decay=config['training']['weight_decay']
         )
     else:
@@ -219,10 +313,12 @@ def main(config_path):
     for epoch in range(start_epoch, config['training']['num_epochs']):
         print(f"\nEpoch [{epoch+1}/{config['training']['num_epochs']}]")
         
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, config)
+        train_loss, train_acc = train_epoch(
+            model, train_loader, criterion, optimizer, device, config, decoder_type
+        )
         print(f"Training Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
         
-        val_loss, val_acc = validate(model, val_loader, criterion, device)
+        val_loss, val_acc = validate(model, val_loader, criterion, device, decoder_type)
         print(f"Validation Loss: {val_loss:.4f} | Acc: {val_acc:.4f}")
 
         train_losses.append(train_loss)

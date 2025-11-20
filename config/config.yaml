@@ -18,6 +18,9 @@ data:
   max_caption_length: 22  # Maximum length of captions
   min_word_freq: 5  # Minimum frequency for a word to be in vocabulary
   oov_token: "<OOV>"  # Out of vocabulary token
+  sample_limit: 1000  # Optional cap on number of samples (None uses full set)
+  use_hf_tokenizer: true
+  hf_tokenizer_name: "gpt2"
 
 # Model Architecture Configuration
 model:
@@ -39,6 +42,15 @@ model:
 
   # image embedding dim
   feature_dim: 512
+  # Pretrained encoder configuration
+  encoder_name: "efficientnet_b0"       # Options: efficientnet_b0, efficientnet_b3, resnet50
+  encoder_pretrained: true              # Load ImageNet weights
+  encoder_trainable_blocks: 1           # Keep last N blocks trainable
+  # Pretrained decoder configuration
+  decoder_type: "gpt2_prefix"           # Options: attention, gpt2_prefix
+  hf_decoder_name: "gpt2"
+  decoder_prefix_length: 16
+  decoder_freeze_layers: 2
 
 # Training Configuration
 training:
@@ -53,7 +65,8 @@ training:
   
   # Optimizer settings
   optimizer: "adamW"  # Options: "adam", "sgd"
-  learning_rate: 0.0001
+  learning_rate: 0.0001          # Decoder + embeddings LR
+  encoder_learning_rate: 0.00001 # Smaller LR for unfrozen encoder blocks
   weight_decay: 0.0001
   momentum: 0.9  # Only used for SGD
   
@@ -66,10 +79,10 @@ training:
   # Random seed for reproducibility
   seed: 42
 
-  experiment_name: "2"
+  experiment_name: "3"
   
   # Checkpoint settings
-  checkpoint_dir: "experiments/experiment_2/checkpoint"
+  checkpoint_dir: "experiments/experiment_3/checkpoint"
 
 # Logging Configuration
 logging:

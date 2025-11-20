@@ -21,3 +21,11 @@ tensorflow>=2.12.0
 nltk>=3.8.0
 rouge-score>=0.1.2
 
+# Pretrained text decoders / tokenizers
+transformers>=4.44.0
+
+# Serving
+fastapi>=0.110.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.9
+
