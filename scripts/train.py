@@ -187,7 +187,7 @@ def main(config_path):
         transform=val_transform,
         max_len=data_cfg['max_caption_length'],
         min_word_freq=data_cfg.get('min_word_freq', 5),
-        sample_limit=data_cfg.get('sample_limit'),
+        sample_limit=data_cfg.get('val_sample_limit'),
         use_hf_tokenizer=data_cfg.get('use_hf_tokenizer', False),
         hf_tokenizer_name=data_cfg.get('hf_tokenizer_name', 'gpt2'),
     )
@@ -269,9 +269,6 @@ def main(config_path):
     decoder_lr = config['training']['learning_rate']
     encoder_lr = config['training'].get('encoder_learning_rate', decoder_lr * 0.1)
     
-    # Separate learning rates: decoder (and embeddings) use baseline LR,
-    # while the small set of unfrozen encoder blocks fine-tune with a
-    # smaller LR to avoid destroying pretrained weights.
     decoder_params = [p for p in decoder.parameters() if p.requires_grad]
     if model.embed_layer is not None:
         decoder_params += list(model.embed_layer.parameters())
@@ -309,7 +306,6 @@ def main(config_path):
     val_losses = []
     train_accuracies = []
     val_accuracies = []
-    caption_metrics_history = []  # Store caption metrics for each epoch
     for epoch in range(start_epoch, config['training']['num_epochs']):
         print(f"\nEpoch [{epoch+1}/{config['training']['num_epochs']}]")
         

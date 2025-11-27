@@ -18,7 +18,8 @@ data:
   max_caption_length: 22  # Maximum length of captions
   min_word_freq: 5  # Minimum frequency for a word to be in vocabulary
   oov_token: "<OOV>"  # Out of vocabulary token
-  sample_limit: 1000  # Optional cap on number of samples (None uses full set)
+  sample_limit: 20000  # Optional cap on number of samples (None uses full set)
+  val_sample_limit: 600
   use_hf_tokenizer: true
   hf_tokenizer_name: "gpt2"
 
@@ -43,7 +44,7 @@ model:
   # image embedding dim
   feature_dim: 512
   # Pretrained encoder configuration
-  encoder_name: "efficientnet_b0"       # Options: efficientnet_b0, efficientnet_b3, resnet50
+  encoder_name: "efficientnet_b3"       # Options: efficientnet_b0, efficientnet_b3, resnet50
   encoder_pretrained: true              # Load ImageNet weights
   encoder_trainable_blocks: 1           # Keep last N blocks trainable
   # Pretrained decoder configuration
@@ -58,10 +59,10 @@ training:
   num_epochs: 10
   
   # Batch size for training
-  batch_size: 32
+  batch_size: 64
   
   # Number of data loading workers
-  num_workers: 1
+  num_workers: 0
   
   # Optimizer settings
   optimizer: "adamW"  # Options: "adam", "sgd"
